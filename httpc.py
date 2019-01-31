@@ -3,7 +3,7 @@ import json
 import urllib.parse
 
 TCP_PORT = 80
-BUFFER_SIZE = 10000 # in bytes
+BUFFER_SIZE = 4096 # in bytes
 
 def help():
     description = 'httpc is a curl-like application but supports HTTP protocol only.'
@@ -24,7 +24,6 @@ def get(URL, verbose=False, headers=''):
     path = parsed_url[2]
     query = parsed_url[4]    
     request_str = f'GET {path}?{query} HTTP/1.0\r\nHost: {host}\r\n\r\n'
-    print(request_str)
     request_bytes = bytes(request_str, encoding='ASCII')
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, TCP_PORT))
@@ -38,7 +37,13 @@ def get(URL, verbose=False, headers=''):
         buffer_str += result.decode('ASCII')
         result = s.recv(BUFFER_SIZE)
     
-    print(buffer_str)
+    if verbose:
+        # Prints both response header and JSON response
+        print(buffer_str)
+    else:
+        split = buffer_str.split('\r\n\r\n')
+        # Only print JSON response
+        print(split[1])
 
 def form_header(header_str):
     split = header_str.split(':')
@@ -46,5 +51,5 @@ def form_header(header_str):
     # Returns JSON object
     return json.loads('{{"{0}":"{1}"}}'.format(key, value))
 
-get('http://httpbin.org/get?course=networking&assignment=1')
+get('http://httpbin.org/get?course=networking&assignment=1', verbose=True)
 #get('http://httpbin.org/get?course=networking&assignment=1', headers='User-Agent:Concordia-HTTP/1.0')
