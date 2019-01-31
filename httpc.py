@@ -1,5 +1,9 @@
-import requests
+import socket
 import json
+import urllib.parse
+
+TCP_PORT = 80
+BUFFER_SIZE = 10000 # in bytes
 
 def help():
     description = 'httpc is a curl-like application but supports HTTP protocol only.'
@@ -14,19 +18,33 @@ def help():
     print(use)
 
 def get(URL, verbose=False, headers=''):
-    if headers:
-        # Parse headers
-        headers = json.loads(headers)
-        response = requests.get(URL, headers=headers)
-    else:
-        response = requests.get(URL)
-    response_str = ''
-    if verbose:
-        response_str += 'Status: {0}\n'.format(response.status_code)
-        for key, value in response.headers.items():
-            response_str += '{0}: {1}\n'.format(key, value)
-    response_str += response.text
-    print(response_str)
+    # Scheme is HTTP by default, and the only one we need for this assignment
+    parsed_url = urllib.parse.urlparse(URL)
+    host = parsed_url[1]
+    path = parsed_url[2]
+    query = parsed_url[4]    
+    request_str = f'GET {path}?{query} HTTP/1.0\r\nHost: {host}\r\n\r\n'
+    print(request_str)
+    request_bytes = bytes(request_str, encoding='ASCII')
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((host, TCP_PORT))
+    s.send(request_bytes)
+    result = s.recv(BUFFER_SIZE)
+
+    # Get result from byte stream, divide result into 10 kB chunks
+    buffer_str = ''
+    while (len(result) > 0):
+        # Decode bytes from result into string from ASCII mapping
+        buffer_str += result.decode('ASCII')
+        result = s.recv(BUFFER_SIZE)
+    
+    print(buffer_str)
+
+def form_header(header_str):
+    split = header_str.split(':')
+    key, value = split[0], split[1]
+    # Returns JSON object
+    return json.loads('{{"{0}":"{1}"}}'.format(key, value))
 
 get('http://httpbin.org/get?course=networking&assignment=1')
-get('http://httpbin.org/get?course=networking&assignment=1', headers='{"User-Agent":"Concordia-HTTP/1.0"}')
+#get('http://httpbin.org/get?course=networking&assignment=1', headers='User-Agent:Concordia-HTTP/1.0')
