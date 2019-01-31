@@ -1,5 +1,4 @@
 import socket
-import json
 import urllib.parse
 import re
 
@@ -7,7 +6,7 @@ TCP_PORT = 80
 BUFFER_SIZE = 4096 # in bytes
 # Taken from http://amdonnelly.blogspot.com/2014/05/regular-expression-command-line.html
 # Will find command line flags and their parameters
-FLAGS_REGEX = r"(?P<flag>-{1,2}\S*)(?:[=:]?|\s+)(?P<params> [^-\s].*?)?(?=\s+[-\/]|$)"
+FLAGS_REGEX = r"(?P<flag>-{1,2}\S*)(?:[=:]?|\s+)(?P<params>[^-\s].*?)?(?=\s+[-\/]|$)"
 # Taken from https://stackoverflow.com/questions/6038061/regular-expression-to-find-urls-within-a-string
 URL_REGEX = r"(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?"
 FLAG_VERBOSE = '-v'
@@ -32,8 +31,13 @@ def get(URL, flags):
     parsed_url = urllib.parse.urlparse(URL)
     host = parsed_url[1]
     path = parsed_url[2]
-    query = parsed_url[4]    
-    request_str = f'GET {path}?{query} HTTP/1.0\r\nHost: {host}\r\n\r\n'
+    query = parsed_url[4]
+    request_str = f'GET {path}?{query} HTTP/1.0\r\nHost: {host}\r\n'
+    
+    for key, value in get_headers(flags):
+        request_str += f'{key}: {value}\r\n'
+
+    request_str += '\r\n'
     request_bytes = bytes(request_str, encoding='ASCII')
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, TCP_PORT))
@@ -63,12 +67,14 @@ def get_flags(query):
     flags = re.findall(FLAGS_REGEX, query)
     return flags
 
-def get_headers(header_str):
+def get_headers(flags):
     headers = []
-    split = header_str.split(':')
-    key, value = split[0], split[1]
-    # Returns JSON object
-    return json.loads('{{"{0}":"{1}"}}'.format(key, value))
+    for flag, params in flags:
+        if flag != FLAG_HEADERS:
+            continue
+        split = params.split(':')
+        headers.append((split[0], split[1]))
+    return headers
 
 def is_verbose(flags):
     for flag, params in flags:
@@ -76,7 +82,7 @@ def is_verbose(flags):
             return True
     return False
 
-test_get = "httpc get 'http://httpbin.org/get?course=networking&assignment=1' -v -h Content-Type:application/json -h User-Agent:httpc"
+test_get = "httpc get 'http://httpbin.org/get?course=networking&assignment=1' -h Content-Type:application/json -v -h User-Agent:httpc"
 url = get_url(test_get)
 flags = get_flags(test_get)
 get(url, flags)
