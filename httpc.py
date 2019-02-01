@@ -2,7 +2,11 @@ import socket
 import urllib.parse
 import re
 import json
+import os
 
+# Get relative path
+DIRNAME = os.path.dirname(__file__)
+POST_FILES = os.path.join(DIRNAME, 'post_files')
 TCP_PORT = 80
 BUFFER_SIZE = 4096 # in bytes
 # Taken from http://amdonnelly.blogspot.com/2014/05/regular-expression-command-line.html
@@ -40,34 +44,26 @@ def get(URL, flags):
         request_str += f'{key}: {value}\r\n'
 
     request_str += '\r\n'
-    request_bytes = bytes(request_str, encoding='ASCII')
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((host, TCP_PORT))
-    s.send(request_bytes)
-    result = s.recv(BUFFER_SIZE)
-
-    # Get result from byte stream, divide result into 10 kB chunks
-    buffer_str = ''
-    while (len(result) > 0):
-        # Decode bytes from result into string from ASCII mapping
-        buffer_str += result.decode('ASCII')
-        result = s.recv(BUFFER_SIZE)
-    s.close()
-
-    if is_verbose(flags):
-        # Prints both response header and JSON response
-        print(buffer_str)
-    else:
-        split = buffer_str.split('\r\n\r\n')
-        # Only print JSON response
-        print(split[1])
+    send_request(host, request_str)
 
 def post(URL, flags):
+    if not are_flags_valid(flags):
+        print('Invalid query. You cannot have both -f and -d flags set simultaneously.')
+        return
+
     # Scheme is HTTP by default, and the only one we need for this assignment
     # In POST, the data to send to the host is NOT in the URL
     parsed_url = urllib.parse.urlparse(URL)
     host = parsed_url[1]
     path = parsed_url[2]
+
+    if FLAG_FILE in flags:
+        data = get_data(flags)
+        filename = data[1].strip('\'')
+        request_str = get_file_contents(filename)
+        send_request(host, request_str.replace('\n', '\r\n'))
+        return
+
     request_str = f'POST {path} HTTP/1.0\r\nHost: {host}\r\n'
         
     for key, value in get_headers(flags):
@@ -92,7 +88,10 @@ def post(URL, flags):
     request_str += '\r\n'
     # Data to send is stored in request header
     request_str += value
-    print(request_str)
+    send_request(host, request_str)
+    
+def send_request(host, request_str):
+    # Send request and print response
     request_bytes = bytes(request_str, encoding='ASCII')
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, TCP_PORT))
@@ -121,12 +120,12 @@ def get_url(query):
 
 def get_flags(query):
     flags = re.findall(FLAGS_REGEX, query)
-    return flags
+    return dict(flags)
 
 def get_headers(flags):
     # Response header
     headers = []
-    for flag, value in flags:
+    for flag, value in flags.items():
         if flag != FLAG_HEADERS:
             continue
         split = value.split(':')
@@ -136,13 +135,16 @@ def get_headers(flags):
 def get_data(flags):
     # Post data
     # Cannot have both -f and -d at the same time
-    for flag, value in flags:
-        if flag != FLAG_INLINE_DATA or flag != FLAG_FILE:
+    for flag, value in flags.items():
+        if flag != FLAG_INLINE_DATA and flag != FLAG_FILE:
             continue
-    return (flag, value)
+        return (flag, value)
+    return None
 
-            
-        
+def get_file_contents(path):
+    f = open(path, "r")
+    return f.read()
+
 # Taken from https://stackoverflow.com/questions/11294535/verify-if-a-string-is-json-in-python
 def is_json(myjson):
     try:
@@ -152,18 +154,22 @@ def is_json(myjson):
     return True
 
 def is_verbose(flags):
-    for flag, value in flags:
-        if flag == FLAG_VERBOSE:
-            return True
-    return False
+    return FLAG_VERBOSE in flags
+
+def are_flags_valid(flags):
+    return not (FLAG_INLINE_DATA in flags and FLAG_FILE in flags)
+
 
 test_get = "httpc get 'http://httpbin.org/get?course=networking&assignment=1' -h Content-Type:application/json -v -h User-Agent:httpc"
-form_data = "comments=zxfdfds&custemail=sdfsdfs&custtel=1234567890&delivery=21%3A00&size=small&topping=cheese&topping=onion"
+form_data = "comments=abcde&custemail=abc%40def.com&custtel=1234567890&delivery=21%3A00&size=small&topping=cheese&topping=onion"
 json_data = '{"Assignment": 1}'
-test_post_json = f"httpc post 'http://httpbin.org/post' -d '{json_data}'"
+test_post_d = f"httpc post 'http://httpbin.org/post' -d '{form_data}' -v"
+test_post_f = f"httpc post 'http://httpbin.org/post' -f '{os.path.join(POST_FILES, 'request.txt')}' -v"
+# Takes relative path of file as input
+
 # url = get_url(test_get)
 # flags = get_flags(test_get)
 # get(url, flags)
-url = get_url(test_post_json)
-flags = get_flags(test_post_json)
+url = get_url(test_post_f)
+flags = get_flags(test_post_f)
 post(url, flags)
