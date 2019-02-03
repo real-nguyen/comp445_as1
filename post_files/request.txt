@@ -1,6 +1,0 @@
-POST /post HTTP/1.0
-Host: httpbin.org
-Content-Length: 114
-Content-Type: application/x-www-form-urlencoded
-
-comments=abcde&custemail=abc%40def.com&custtel=1234567890&delivery=21%3A00&size=small&topping=cheese&topping=onion

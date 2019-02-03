@@ -1,0 +1,1 @@
+httpc post 'http://httpbin.org/post' -f '{os.path.join(POST_FILES, 'json_data.txt')}' -v
