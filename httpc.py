@@ -20,10 +20,14 @@ FLAG_HEADERS = '-h'
 FLAG_INLINE_DATA = '-d'
 FLAG_FILE = '-f'
 HEADER_FORMAT = 'key:value'
+LOCALHOST = 'localhost'
+LOCALHOST_IP = '127\.0\.0\.1'
 # Will find command line flags and their parameters
 REGEX_FLAGS = r"(?P<flag>-{1,2}\S*)(?:[=:]?|\s+)(?P<params>[^-\s].*?)?(?=\s+[-\/]|$)"
 # Taken from https://stackoverflow.com/questions/6038061/regular-expression-to-find-urls-within-a-string
 REGEX_URL = r"(http://)([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?"
+# Taken from https://stackoverflow.com/questions/18696796/regexp-javascript-url-match-with-localhost
+REGEX_LOCALHOST = rf"({LOCALHOST}|{LOCALHOST_IP})(:[0-9]+)?([/\.\w]+)*"
 # Command regexes
 REGEX_STARTS_WITH_APP_NAME = rf"^{APP_NAME}"
 REGEX_NO_COMMAND = rf"^{APP_NAME}$"
@@ -77,12 +81,16 @@ def get(URL, flags):
     host = parsed_url[1]
     path = parsed_url[2]
     query = parsed_url[4]
-    request_str = f'GET {path}?{query} HTTP/1.0\r\nHost: {host}\r\n'
-    
+    if query != None and query != '':
+        request_str = f'GET {path}?{query} HTTP/1.0\r\nHost: {host}\r\n'
+    else:
+        request_str = f'GET {path} HTTP/1.0\r\nHost: {host}\r\n'
+
     for key, value in get_headers(flags):
         request_str += f'{key}: {value}\r\n'
 
     request_str += '\r\n'
+    print(request_str)    
     send_request(host, request_str, is_verbose(flags))
 
 def post(URL, flags):
@@ -130,17 +138,22 @@ def send_request(host, request_str, verbose):
     # Send request and print response
     request_bytes = bytes(request_str, encoding='ASCII')
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((host, TCP_PORT))
-    s.send(request_bytes)
-    result = s.recv(BUFFER_SIZE)
-
-    # Get result from byte stream, divide result into 10 kB chunks
-    buffer_str = ''
-    while (len(result) > 0):
-        # Decode bytes from result into string from ASCII mapping
-        buffer_str += result.decode('ASCII')
+    try:
+        s.connect((host, TCP_PORT))
+        s.send(request_bytes)
         result = s.recv(BUFFER_SIZE)
-    s.close()
+
+        # Get result from byte stream, divide result into 10 kB chunks
+        buffer_str = ''
+        while len(result) > 0:
+            # Decode bytes from result into string from ASCII mapping
+            buffer_str += result.decode('ASCII')
+            result = s.recv(BUFFER_SIZE)
+        s.close()
+    except TimeoutError:
+        print('Connection timed out.')
+        s.close()
+        return
 
     if verbose:
         # Prints both response header and JSON response
@@ -151,8 +164,17 @@ def send_request(host, request_str, verbose):
         print(split[1])
 
 def get_url(query):
+    print(query)
+    url = None
+    url = re.search(REGEX_LOCALHOST, query)
+    print(f'localhost url: {url}')
+    if url != None:
+        return url.group(0)
     url = re.search(REGEX_URL, query)
-    return url.group(0)
+    print(f'regular url: {url}')
+    if url != None:
+        return url.group(0)
+    return url
 
 def get_flags(query):
     flags = re.findall(REGEX_FLAGS, query)
@@ -185,8 +207,8 @@ def get_file_contents(path):
 # Taken from https://stackoverflow.com/questions/11294535/verify-if-a-string-is-json-in-python
 def is_json(myjson):
     try:
-        json_object = json.loads(myjson)
-    except ValueError as e:
+        json.loads(myjson)
+    except ValueError:
         return False
     return True
 
@@ -195,15 +217,6 @@ def is_verbose(flags):
         if flag == FLAG_VERBOSE:
             return True
     return False
-
-def search_flag(flag_to_search, flags):
-    flags_to_return = []
-    # flags is a list of tuples    
-    for flag, value in flags:
-        if flag != flag_to_search:
-            continue
-        flags_to_return.append((key, value))
-    return flags_to_return
 
 def are_flags_valid(flags):
     return not (FLAG_INLINE_DATA in flags and FLAG_FILE in flags)
@@ -233,7 +246,7 @@ def parse_query(query):
     if match != None:
         url = get_url(query)
         if url == None:
-            print(f"A URL is needed for command '{APP_NAME} {COMMAND_GET}'.")
+            print(f"A valid URL is needed for command '{APP_NAME} {COMMAND_GET}'.")
             return
         flags = get_flags(query)
         for flag, value in flags:
@@ -246,7 +259,7 @@ def parse_query(query):
     if match != None:
         url = get_url(query)
         if url == None:
-            print(f"A URL is needed for command '{APP_NAME} {COMMAND_GET}'.")
+            print(f"A valid URL is needed for command '{APP_NAME} {COMMAND_GET}'.")
             return
         flags = get_flags(query)
         has_inline_data, has_file = False, False
