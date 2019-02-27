@@ -1,5 +1,5 @@
 import socket
-import urllib.parse
+from urllib.parse import urlparse
 import re
 import json
 import os
@@ -7,7 +7,7 @@ import os
 # Get relative path
 DIRNAME = os.path.dirname(__file__)
 POST_FILES = os.path.join(DIRNAME, 'post_files')
-TCP_PORT = 80
+DEFAULT_PORT = 80
 BUFFER_SIZE = 4096 # in bytes
 # Taken from http://amdonnelly.blogspot.com/2014/05/regular-expression-command-line.html
 APP_NAME = 'httpc'
@@ -27,7 +27,7 @@ REGEX_FLAGS = r"(?P<flag>-{1,2}\S*)(?:[=:]?|\s+)(?P<params>[^-\s].*?)?(?=\s+[-\/
 # Taken from https://stackoverflow.com/questions/6038061/regular-expression-to-find-urls-within-a-string
 REGEX_URL = r"(http://)([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?"
 # Taken from https://stackoverflow.com/questions/18696796/regexp-javascript-url-match-with-localhost
-REGEX_LOCALHOST = rf"({LOCALHOST}|{LOCALHOST_IP})(:[0-9]+)?([/\.\w]+)*"
+REGEX_LOCALHOST = rf"(http://)({LOCALHOST}|{LOCALHOST_IP})(:[0-9]+)?([/\.\w]+)*"
 # Command regexes
 REGEX_STARTS_WITH_APP_NAME = rf"^{APP_NAME}"
 REGEX_NO_COMMAND = rf"^{APP_NAME}$"
@@ -77,30 +77,26 @@ def help(command=''):
 def get(URL, flags):
     # Scheme is HTTP by default, and the only one we need for this assignment
     # In GET, the data to send is stored in the query, as part of the URL
-    parsed_url = urllib.parse.urlparse(URL)
-    host = parsed_url[1]
-    path = parsed_url[2]
-    query = parsed_url[4]
-    if query != None and query != '':
-        request_str = f'GET {path}?{query} HTTP/1.0\r\nHost: {host}\r\n'
-    else:
-        request_str = f'GET {path} HTTP/1.0\r\nHost: {host}\r\n'
+    parsed_url = urlparse(URL)
+    netloc = parsed_url[1]
+    path = parsed_url[2] if parsed_url[2] != '' else '/'
+    query = f'?{parsed_url[4]}' if parsed_url[4] != '' else ''    
+    request_str = f'GET {path}{query} HTTP/1.0\r\nHost: {netloc}\r\n'
 
     for key, value in get_headers(flags):
         request_str += f'{key}: {value}\r\n'
 
     request_str += '\r\n'
-    print(request_str)    
-    send_request(host, request_str, is_verbose(flags))
+    send_request(netloc, request_str, is_verbose(flags))
 
 def post(URL, flags):
     # Scheme is HTTP by default, and the only one we need for this assignment
     # In POST, the data to send to the host is NOT in the URL
-    parsed_url = urllib.parse.urlparse(URL)
-    host = parsed_url[1]
+    parsed_url = urlparse(URL)
+    netloc = parsed_url[1]
     path = parsed_url[2]
 
-    request_str = f'POST {path} HTTP/1.0\r\nHost: {host}\r\n'
+    request_str = f'POST {path} HTTP/1.0\r\nHost: {netloc}\r\n'
         
     for key, value in get_headers(flags):
         request_str += f'{key}: {value}\r\n'
@@ -132,27 +128,24 @@ def post(URL, flags):
     request_str += '\r\n'
     # Data to send is stored in request header
     request_str += value
-    send_request(host, request_str, is_verbose(flags))
+    send_request(netloc, request_str, is_verbose(flags))
     
-def send_request(host, request_str, verbose):
+def send_request(netloc, request_str, verbose):
     # Send request and print response
     request_bytes = bytes(request_str, encoding='ASCII')
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        s.connect((host, TCP_PORT))
-        s.send(request_bytes)
-        result = s.recv(BUFFER_SIZE)
-
-        # Get result from byte stream, divide result into 10 kB chunks
         buffer_str = ''
-        while len(result) > 0:
+        netloc_split = netloc.split(':')
+        host = netloc_split[0]
+        port = int(netloc_split[1]) if len(netloc_split) > 1 else DEFAULT_PORT
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((host, port))
+            s.sendall(request_bytes)
+            result = s.recv(BUFFER_SIZE)
             # Decode bytes from result into string from ASCII mapping
             buffer_str += result.decode('ASCII')
-            result = s.recv(BUFFER_SIZE)
-        s.close()
     except TimeoutError:
         print('Connection timed out.')
-        s.close()
         return
 
     if verbose:
@@ -164,14 +157,10 @@ def send_request(host, request_str, verbose):
         print(split[1])
 
 def get_url(query):
-    print(query)
-    url = None
     url = re.search(REGEX_LOCALHOST, query)
-    print(f'localhost url: {url}')
     if url != None:
         return url.group(0)
     url = re.search(REGEX_URL, query)
-    print(f'regular url: {url}')
     if url != None:
         return url.group(0)
     return url
