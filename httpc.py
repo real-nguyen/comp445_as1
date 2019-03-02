@@ -21,7 +21,7 @@ FLAG_INLINE_DATA = '-d'
 FLAG_FILE = '-f'
 HEADER_FORMAT = 'key:value'
 LOCALHOST = 'localhost'
-LOCALHOST_IP = '127\.0\.0\.1'
+LOCALHOST_IP = '127.0.0.1'
 # Will find command line flags and their parameters
 REGEX_FLAGS = r"(?P<flag>-{1,2}\S*)(?:[=:]?|\s+)(?P<params>[^-\s].*?)?(?=\s+[-\/]|$)"
 # Taken from https://stackoverflow.com/questions/6038061/regular-expression-to-find-urls-within-a-string
@@ -271,7 +271,8 @@ def parse_query(query):
     print(f'Unknown or invalid command for {APP_NAME}. Please check that your commands and/or flags are well formatted.')
 
 while True:
-    print('> ', end='')
+    print()
+    print(f'{APP_NAME} > ', end='')
     query = input()
     if query == COMMAND_QUIT:
         break
